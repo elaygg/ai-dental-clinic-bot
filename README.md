@@ -58,5 +58,4 @@ An intelligent AI assistant designed specifically for dental clinics. This bot a
 
 1. Clone the repository:
    ```bash
-   git clone [https://github.com/elaygg/ai-dental-clinic-bot.git](https://github.com/elaygg/ai-dental-clinic-bot.git)
-   cd ai-dental-clinic-bot
+   git clone https://github.com/elaygg/ai-dental-clinic-bot.git && cd ai-dental-clinic-bot
