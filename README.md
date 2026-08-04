@@ -54,7 +54,7 @@ An intelligent AI assistant designed specifically for dental clinics. This bot a
 
 ---
 
-## Local Setup (For Developers)
+## Local Setup
 
 1. Clone the repository:
    ```bash
