@@ -5,7 +5,7 @@ python -m app.cli "How much is a kids' dental cleaning?"
 
 import argparse
 
-from app.rag import answer_question
+from app.assistant import reply_to
 
 
 def main() -> None:
@@ -13,9 +13,9 @@ def main() -> None:
     parser.add_argument("question", help="The patient's question, in quotes.")
     args = parser.parse_args()
 
-    result = answer_question(args.question)
-    print(result.answer)
-    print(f"\nSources: {result.sources}  |  top relevance: {result.top_score}")
+    reply = reply_to(args.question)
+    print(reply.answer)
+    print(f"\nSources: {reply.sources}  |  handoff: {reply.handoff_reason or 'no'}")
 
 
 if __name__ == "__main__":

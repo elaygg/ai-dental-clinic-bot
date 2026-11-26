@@ -1,7 +1,6 @@
 """Retrieval-augmented generation: find relevant clinic text, then ask the LLM.
 
-Shared by the API (app/main.py) and the command line tool (app/cli.py),
-so both always use the same prompt and the same search settings.
+Called by app/assistant.py after the handoff checks have passed.
 """
 
 import json
@@ -18,10 +17,6 @@ from app.build_index import MANIFEST_FILE
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
-
-FALLBACK_ANSWER = (
-    "Sorry, I couldn't find this in the clinic's information. Our administrator will be happy to help you."
-)
 
 SYSTEM_PROMPT = """You are a polite and professional administrator of Apostol Dental Clinic.
 Answer the patient's question using ONLY the clinic information below.
@@ -47,7 +42,7 @@ class IndexNotReadyError(RuntimeError):
 
 @dataclass
 class RagAnswer:
-    answer: str
+    answer: str | None  # None = nothing relevant found, a person should answer
     sources: list[str]
     top_score: float | None
 
@@ -102,7 +97,7 @@ def answer_question(question: str) -> RagAnswer:
     )
 
     if not relevant:
-        return RagAnswer(answer=FALLBACK_ANSWER, sources=[], top_score=top_score)
+        return RagAnswer(answer=None, sources=[], top_score=top_score)
 
     # 3. Generation: the LLM answers using only the retrieved chunks.
     context = "\n\n---\n\n".join(doc.page_content for doc in relevant)

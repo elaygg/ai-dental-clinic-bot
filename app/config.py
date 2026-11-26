@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     # Tune it by looking at the top_score values in the logs.
     relevance_threshold: float = 0.25
 
+    # Shown to patients with urgent medical questions (public clinic number).
+    clinic_phone: str = "+7 707 477 2888"
+
     log_level: str = "INFO"
 
 
