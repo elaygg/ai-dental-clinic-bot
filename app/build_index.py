@@ -45,7 +45,7 @@ def split_documents(documents: list[Document]) -> list[Document]:
     so a price line keeps the context of the section it belongs to.
     """
     header_splitter = MarkdownHeaderTextSplitter(HEADERS_TO_SPLIT_ON)
-    size_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+    size_splitter = RecursiveCharacterTextSplitter(chunk_size=1200, chunk_overlap=100)
 
     chunks: list[Document] = []
     for doc in documents:
