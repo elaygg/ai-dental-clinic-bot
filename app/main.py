@@ -13,8 +13,10 @@ from fastapi import Depends, FastAPI, HTTPException, Security, status
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.assistant import reply_to
 from app.config import Settings, get_settings
-from app.rag import IndexNotReadyError, answer_question
+from app.handoff import HandoffReason
+from app.rag import IndexNotReadyError
 
 logging.basicConfig(
     level=get_settings().log_level,
@@ -24,8 +26,11 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Dental Clinic AI Assistant",
-    description="Answers patient questions about prices, treatments and payments using RAG.",
-    version="1.0.0",
+    description=(
+        "Answers patient questions about prices, treatments and payments using RAG, "
+        "and hands medical questions over to a human administrator."
+    ),
+    version="1.1.0",
 )
 
 
@@ -43,6 +48,9 @@ class AskRequest(BaseModel):
 class AskResponse(BaseModel):
     answer: str
     sources: list[str]
+    # true = a person must take over this chat (Make.com routes it to an administrator)
+    handoff: bool
+    handoff_reason: HandoffReason | None
 
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
@@ -67,10 +75,13 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.post("/ask", response_model=AskResponse, dependencies=[Depends(verify_api_key)])
+# One handler, two URLs. /chat is the main endpoint; /ask is kept so existing
+# integrations (the Make.com scenario) keep working. Marked deprecated in /docs.
+@app.post("/chat", response_model=AskResponse, dependencies=[Depends(verify_api_key)])
+@app.post("/ask", response_model=AskResponse, dependencies=[Depends(verify_api_key)], deprecated=True)
 def ask(request: AskRequest) -> AskResponse:
     try:
-        result = answer_question(request.question)
+        reply = reply_to(request.question)
     except IndexNotReadyError as exc:
         logger.error("%s", exc)
         raise HTTPException(
@@ -84,4 +95,9 @@ def ask(request: AskRequest) -> AskResponse:
             detail="AI service is temporarily unavailable",
         ) from exc
 
-    return AskResponse(answer=result.answer, sources=result.sources)
+    return AskResponse(
+        answer=reply.answer,
+        sources=reply.sources,
+        handoff=reply.handoff,
+        handoff_reason=reply.handoff_reason,
+    )
