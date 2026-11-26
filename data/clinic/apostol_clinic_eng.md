@@ -61,4 +61,4 @@ Every child receives a special gift after their appointment! A children's playro
 We treat under a microscope for maximum precision in preserving healthy tissues.
 - Cavity treatment (chemical cure filling): **15,000 ₸**
 - Cavity treatment (filling replacement): **28,000 - 50,000 ₸**
-- Pulpitis treatment: **from 40,000 ₸** (1 canal) to **55,0
+- Pulpitis treatment: **from 40,000 ₸** (1 canal)
