@@ -115,7 +115,12 @@ def get_classifier():
 
 def classify(text: str) -> Intent:
     """Ask the LLM what the patient wants."""
-    return get_classifier().invoke({"message": text}).intent
+    result = get_classifier().invoke({"message": text})
+    # LangChain types the result as "dict or Pydantic model". With a Pydantic schema
+    # it is always an IntentResult; this check proves it to the type checker too.
+    if not isinstance(result, IntentResult):
+        raise TypeError(f"Unexpected classifier output: {type(result).__name__}")
+    return result.intent
 
 
 # --- What the patient sees --------------------------------------------------
