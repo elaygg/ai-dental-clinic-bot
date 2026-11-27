@@ -47,4 +47,6 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     """Read settings once and reuse them."""
-    return Settings()
+    # pydantic-settings fills openai_api_key from the environment or .env at runtime.
+    # The type checker cannot see that and reports a missing argument, so we silence it here.
+    return Settings()  # pyright: ignore[reportCallIssue]
