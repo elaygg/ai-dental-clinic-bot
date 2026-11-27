@@ -1,0 +1,21 @@
+# Settings for the development tools. The app's dependencies are in requirements.txt.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Lets the tests import the "app" package without setting PYTHONPATH by hand.
+pythonpath = ["."]
+# Python 3.14 deprecation warnings from inside third-party libraries, not from our code.
+# Only these are hidden, so warnings about our own code still show up.
+filterwarnings = [
+    "ignore::DeprecationWarning:chromadb",
+    "ignore::DeprecationWarning:langsmith",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+# E, W: style errors; F: real bugs (unused imports, undefined names);
+# I: import order; B: common bug patterns; UP: modern Python syntax.
+select = ["E", "W", "F", "I", "B", "UP"]
