@@ -1,61 +1,210 @@
-# AI Dental Clinic Agent
+# AI Dental Clinic Assistant
 
-An intelligent AI assistant designed specifically for dental clinics. This bot automates patient consultations in Direct/Telegram, answers questions about pricing, treatments, and complex payment procedures (like EPV), and seamlessly hands off to a human administrator when necessary.
+![CI](https://github.com/elaygg/ai-dental-clinic-bot/actions/workflows/ci.yml/badge.svg)
+![Python](https://img.shields.io/badge/python-3.13%2B-blue)
 
-**[Watch the Demo Video on Loom](https://www.loom.com/share/3cca72ef58d14165939fc0a1a55c584c)**
+A chat assistant API for a dental clinic. It answers patient questions about prices, services,
+doctors and payment options using RAG over the clinic's own information, and hands the chat
+over to a human administrator when it should not answer by itself: medical questions,
+booking requests, explicit requests for a person, or questions the clinic data does not cover.
 
----
+> **Personal project.** The knowledge base is built from the public website and price list of
+> Apostol Dental Clinic (Almaty, Kazakhstan). I am not affiliated with the clinic, and the bot
+> is not used by it.
 
 ## Features
 
-* **Context-Aware Responses (RAG):** Uses a ChromaDB vector database to provide accurate answers based *only* on the clinic's real pricing and policies. No hallucinations.
-* **Complex Logic Handling:** Perfectly trained to explain multi-step processes, such as using pension funds (EPV) for dental care.
-* **Human Handoff:** Automatically recognizes when a user is asking for medical advice or explicitly requesting a human, routing them to a live administrator.
-* **Omnichannel Ready:** Core logic is handled via Python/FastAPI, allowing easy integration with Telegram, Instagram, or WhatsApp via Make.com webhooks.
+- **Answers from clinic data only (RAG).** The clinic's Markdown file is split into chunks,
+  embedded with OpenAI and stored in ChromaDB. For each question the top 3 chunks above a
+  relevance threshold are passed to `gpt-4o-mini`, which is told to use only that text.
+- **Human handoff with a reason.** The API returns `handoff: true` and one of
+  `medical_question`, `human_requested`, `booking_requested`, `no_relevant_info`,
+  so the messenger integration can route the chat to an administrator.
+- **Two-layer intent detection.** Keyword rules (English and Russian) catch explicit requests
+  for a person instantly and for free. Everything else goes through an LLM classifier with
+  structured output (a Pydantic schema, not free text).
+- **Medical questions never reach the answer generator.** They are handed off before RAG runs,
+  so the bot cannot give medical advice.
+- **English and Russian.** Fixed handoff and greeting messages are chosen by the patient's language.
+- **Production basics.** API key auth, request validation, clear error codes (401, 422, 502, 503),
+  a `/health` endpoint, and logs that never contain the patient's message.
+- **Tested.** 32 pytest tests run without an OpenAI key; GitHub Actions runs ruff and pytest
+  on every pull request.
 
-## Interface Preview
+## How it works
 
-![Interface Preview](images/chat.png)
+```text
+patient message (Telegram)
+  │
+  Make.com ── POST /chat ──► FastAPI
+                               │
+                               ├─ 1. keyword rules: "administrator", "call me back"...  → handoff: human_requested
+                               │
+                               ├─ 2. LLM intent classifier
+                               │       medical_advice   → handoff: medical_question
+                               │       human_request    → handoff: human_requested
+                               │       booking_request  → handoff: booking_requested
+                               │       small_talk       → fixed greeting
+                               │       clinic_info      → step 3
+                               │
+                               └─ 3. RAG: ChromaDB top-3 chunks → gpt-4o-mini
+                                       nothing relevant → handoff: no_relevant_info
+                                       found            → answer + sources
+```
 
----
+The cheap checks run first, so explicit requests for a person cost no LLM calls.
 
-## Tech Stack
+## API
 
-* **Language:** Python 3.10+
-* **Framework:** FastAPI (Uvicorn server)
-* **AI & Embeddings:** OpenAI API (`gpt-4o-mini`, `text-embedding-3-small`), LangChain
-* **Vector Database:** ChromaDB
-* **Automation Routing:** Make.com (formerly Integromat)
-* **Deployment:** DigitalOcean (Ubuntu VPS) + Ngrok (for local tunneling)
+Interactive docs: `http://127.0.0.1:8000/docs` after starting the server.
 
----
+### `POST /chat`
 
-## Project Structure
+```bash
+curl -X POST http://127.0.0.1:8000/chat \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $API_KEY" \
+  -d '{"question": "How much is a kids dental cleaning?"}'
+```
 
-* `api.py` — The main FastAPI application and endpoint (`/chat`) that handles incoming requests.
-* `create_database.py` — Script to chunk the markdown data and build the Chroma vector database.
-* `query_data.py` — The core RAG logic: searching the database and prompting the OpenAI model.
-* `data/books/` — Contains the raw clinic data in Markdown format.
-* `requirements.txt` — Python dependencies.
+```json
+{
+  "answer": "A professional cleaning for children costs 17,000 ₸. Would you like to book a visit?",
+  "sources": ["apostol_clinic_eng.md"],
+  "handoff": false,
+  "handoff_reason": null
+}
+```
 
----
+A medical question is handed off instead of answered:
 
-## How It Works (Architecture)
+```json
+{
+  "answer": "This question needs a doctor's opinion, so I've passed it to our administrator. ...",
+  "sources": [],
+  "handoff": true,
+  "handoff_reason": "medical_question"
+}
+```
 
-1. **User Input:** A patient sends a message in Instagram/Telegram.
-2. **Make.com Webhook:** Make catches the message and sends an HTTP POST request to our FastAPI server.
-3. **Vector Search:** `query_data.py` calculates the embedding for the user's question and searches ChromaDB for the top 3 most relevant context chunks.
-4. **LLM Generation:** The context and the user's question are sent to OpenAI with a strict system prompt to formulate a polite, accurate response.
-5. **Response:** The answer is sent back via Make.com to the user's chat.
+| Status | When |
+|---|---|
+| `200` | Answer or handoff returned |
+| `401` | `X-API-Key` header missing or wrong (only when `API_KEY` is set) |
+| `422` | Empty question, or no `question` field |
+| `502` | OpenAI request failed |
+| `503` | Vector index not built (run `python -m app.build_index`) |
 
-## End-to-End Request Flow
+`POST /ask` is the same endpoint under its old name, kept for the existing Make.com scenario
+and marked as deprecated. `GET /health` returns `{"status": "ok"}`.
 
-![Request Flow](images/flow.png)
+## Getting started
 
----
+Requires Python 3.13+ and an OpenAI API key.
 
-## Local Setup
+```bash
+git clone https://github.com/elaygg/ai-dental-clinic-bot.git
+cd ai-dental-clinic-bot
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/elaygg/ai-dental-clinic-bot.git && cd ai-dental-clinic-bot
+cp .env.example .env          # then put your OPENAI_API_KEY in .env
+python -m app.build_index     # builds the ChromaDB index from data/clinic/
+
+python -m app.cli "How much is a kids dental cleaning?"   # ask from the terminal
+uvicorn app.main:app --reload                             # or start the API
+```
+
+### Configuration
+
+All settings live in `app/config.py` and can be overridden in `.env`.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `OPENAI_API_KEY` | required | OpenAI access |
+| `API_KEY` | empty (auth off) | Shared secret clients send in `X-API-Key` |
+| `LLM_MODEL` | `gpt-4o-mini` | Answer generation and intent classification |
+| `EMBEDDING_MODEL` | `text-embedding-3-small` | Must match the model the index was built with |
+| `RELEVANCE_THRESHOLD` | `0.25` | Minimum cosine relevance for a chunk to be used |
+| `CLINIC_PHONE` | clinic's public number | Shown to patients with urgent medical questions |
+| `LOG_LEVEL` | `INFO` | Logging level |
+
+## Tests
+
+```bash
+pip install -r requirements-dev.txt
+pytest            # 32 tests, about a second, no OpenAI key or internet needed
+ruff check .      # lint
+ruff format .     # format
+```
+
+The LLM classifier and the vector search are replaced with fakes (`monkeypatch`), so the tests
+check the application's own logic:
+
+- `tests/test_handoff.py`: keyword rules, language detection, handoff messages;
+- `tests/test_assistant.py`: the decision flow for every intent, including that medical
+  questions never reach RAG;
+- `tests/test_api.py`: API key, validation, JSON fields, error codes, the deprecated `/ask` alias.
+
+The quality of the LLM's answers and classifications is checked separately by asking real
+questions through `app.cli`.
+
+## Project structure
+
+```text
+app/
+  config.py        settings from environment variables and .env
+  build_index.py   splits the clinic Markdown into chunks and builds the ChromaDB index
+  rag.py           retrieval + answer generation
+  handoff.py       keyword rules, LLM intent classifier, handoff messages
+  assistant.py     the decision flow: rules → classifier → RAG
+  main.py          FastAPI app: /chat, /ask, /health
+  cli.py           ask a question from the terminal
+data/clinic/       clinic information in Markdown (public website data)
+tests/             pytest suite
+.github/workflows/ CI: ruff + pytest
+```
+
+## Messenger integration (Make.com)
+
+The API only decides; the integration delivers. In Make.com:
+
+1. **Telegram Bot: Watch Updates** receives the patient's message.
+2. **HTTP: Make a request** sends `POST /chat` with `{"question": "{{message.text}}"}` and the
+   `X-API-Key` header, with "Parse response" on.
+3. **Router:**
+   - `handoff = false`: send `answer` back to the patient;
+   - `handoff = true`: send `answer` to the patient and notify the administrators' chat with
+     `handoff_reason` and the question.
+
+Because the API returns a flag instead of messaging anyone itself, another channel
+(WhatsApp, Instagram) can be added in Make.com without changing the Python code.
+
+## Design decisions
+
+- **Rules first, LLM second.** Keyword rules are free and predictable but cannot understand
+  meaning ("painless treatment?" is not a medical complaint), so they only catch explicit
+  requests for a person. Meaning is left to the classifier.
+- **Relevance threshold 0.25.** Measured on the clinic data: relevant questions score about
+  0.64, unrelated ones about 0.14. Below the threshold the bot hands off instead of guessing.
+- **Index manifest.** `build_index` records which embedding model built the index; the API
+  refuses to start answering (503) if the configured model is different.
+- **No patient text in logs.** Messages can contain health data, so logs keep only numbers
+  (message length, relevance score, chunks used).
+- **Stateless API.** The bot ends its answers with an offer to book, so a short "yes" is treated
+  as a booking request. With conversation history this assumption would not be needed.
+
+## Limitations and next steps
+
+- Conversation history (for example in Redis), so follow-up questions keep their context.
+- An evaluation set of labelled questions to measure classifier and answer quality.
+- Real booking needs access to the clinic's schedule; for now requests go to an administrator.
+- Docker image and a fresh deployment. The first version ran on a DigitalOcean VPS
+  (with ngrok for local testing); it is not deployed at the moment.
+
+## Credits
+
+The first RAG pipeline was based on
+[pixegami/langchain-rag-tutorial](https://github.com/pixegami/langchain-rag-tutorial).
+It has since been rewritten: settings, handoff, API, tests and CI are this project's own.
