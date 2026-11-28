@@ -1,0 +1,18 @@
+# Starts the API with one command:   docker compose up --build
+# Builds the vector index (once):    docker compose run --rm api python -m app.build_index
+
+services:
+  api:
+    build: .
+    image: dental-bot
+    ports:
+      - "8000:8000"
+    # Secrets are read from .env when the container starts.
+    env_file: .env
+    volumes:
+      # The vector index lives on a named volume, so it survives restarts and image rebuilds.
+      - index:/data
+    restart: unless-stopped
+
+volumes:
+  index:
