@@ -1,4 +1,4 @@
-# Runs the linter and the tests on GitHub's servers
+# Runs the linter, the tests and a Docker build on GitHub's servers
 # for every push to main and for every pull request.
 name: CI
 
@@ -36,3 +36,24 @@ jobs:
       # No OpenAI key needed: the tests replace the LLM with fakes.
       - name: Run tests
         run: pytest
+
+  # Runs in parallel with "test": checks that the Docker image builds and the API starts.
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v5
+
+      - name: Build the image
+        run: docker build -t dental-bot .
+
+      # A fake key is enough: /health does not call OpenAI.
+      - name: Start the container and check /health
+        run: |
+          docker run -d --name bot -p 8000:8000 -e OPENAI_API_KEY=sk-not-used dental-bot
+          for i in $(seq 1 30); do
+            if curl -fs http://127.0.0.1:8000/health; then exit 0; fi
+            sleep 1
+          done
+          docker logs bot
+          exit 1
