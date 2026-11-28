@@ -28,8 +28,10 @@ booking requests, explicit requests for a person, or questions the clinic data d
 - **English and Russian.** Fixed handoff and greeting messages are chosen by the patient's language.
 - **Production basics.** API key auth, request validation, clear error codes (401, 422, 502, 503),
   a `/health` endpoint, and logs that never contain the patient's message.
-- **Tested.** 32 pytest tests run without an OpenAI key; GitHub Actions runs ruff and pytest
-  on every pull request.
+- **Docker.** The API runs in a container with Docker Compose: non-root user, health check,
+  vector index on a volume, secrets passed at run time.
+- **Tested.** 32 pytest tests run without an OpenAI key; GitHub Actions runs ruff, pytest
+  and a Docker build on every pull request.
 
 ## How it works
 
@@ -116,6 +118,23 @@ python -m app.cli "How much is a kids dental cleaning?"   # ask from the termina
 uvicorn app.main:app --reload                             # or start the API
 ```
 
+### Run with Docker
+
+Requires Docker (Docker Desktop on macOS and Windows). No local Python needed.
+
+```bash
+cp .env.example .env                                     # then put your OPENAI_API_KEY in .env
+docker compose build                                     # build the image
+docker compose run --rm api python -m app.build_index    # build the index once, on the "index" volume
+docker compose up -d                                     # start the API on http://127.0.0.1:8000
+
+docker compose logs -f api                               # follow the logs
+docker compose down                                      # stop (add -v to also delete the index)
+```
+
+Secrets are read from `.env` when the container starts and are never copied into the image
+(see `.dockerignore`). The index lives on a named volume, so it survives restarts and image rebuilds.
+
 ### Configuration
 
 All settings live in `app/config.py` and can be overridden in `.env`.
@@ -163,7 +182,9 @@ app/
   cli.py           ask a question from the terminal
 data/clinic/       clinic information in Markdown (public website data)
 tests/             pytest suite
-.github/workflows/ CI: ruff + pytest
+Dockerfile         the API image
+compose.yaml       runs the image with .env and the index volume
+.github/workflows/ CI: ruff, pytest, Docker build
 ```
 
 ## Messenger integration (Make.com)
@@ -190,6 +211,9 @@ Because the API returns a flag instead of messaging anyone itself, another chann
   0.64, unrelated ones about 0.14. Below the threshold the bot hands off instead of guessing.
 - **Index manifest.** `build_index` records which embedding model built the index; the API
   refuses to start answering (503) if the configured model is different.
+- **Index on a volume, not in the image.** Building the index needs the OpenAI key, and the key
+  must never end up inside the image. So the image holds only code and clinic data, and the index
+  is built once in the container and kept on a volume.
 - **No patient text in logs.** Messages can contain health data, so logs keep only numbers
   (message length, relevance score, chunks used).
 - **Stateless API.** The bot ends its answers with an offer to book, so a short "yes" is treated
@@ -200,8 +224,9 @@ Because the API returns a flag instead of messaging anyone itself, another chann
 - Conversation history (for example in Redis), so follow-up questions keep their context.
 - An evaluation set of labelled questions to measure classifier and answer quality.
 - Real booking needs access to the clinic's schedule; for now requests go to an administrator.
-- Docker image and a fresh deployment. The first version ran on a DigitalOcean VPS
-  (with ngrok for local testing); it is not deployed at the moment.
+- A fresh deployment. The first version ran on a DigitalOcean VPS (with ngrok for local
+  testing); it is not deployed at the moment. With the Docker image, a new server needs only
+  Docker, the repository and a `.env` file.
 
 ## Credits
 
